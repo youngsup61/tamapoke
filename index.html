@@ -47,6 +47,9 @@
     let tamaUI = null;
 
     async function initApp() {
+      if ((window.innerWidth <= 460 && window.innerHeight <= 460) || location.search.indexOf("watch") !== -1) {
+        document.body.classList.add("watch-mode");
+      }
       initLanguage();
       pet.begin();
 
