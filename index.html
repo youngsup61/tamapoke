@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#121214">
+  <title>TamaPoke - 안드로이드 포켓몬 다마고치</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app-container">
+    <!-- Top helper bar -->
+    <div class="top-controls">
+      <button class="icon-btn" id="btn-sound" onclick="toggleSound()">🔊 소리</button>
+      <button class="icon-btn" id="btn-fullscreen" onclick="toggleFullscreen()">⛶ 전체화면</button>
+    </div>
+
+    <!-- Realistic Pokeball Frame -->
+    <div class="pokeball-case">
+      <div class="screen-wrapper">
+        <canvas id="screen" width="466" height="466"></canvas>
+      </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div id="loading-text">TamaPoke 시작하는 중...</div>
+      <div class="progress-bar-wrap">
+        <div id="progress-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/dex.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/pak_loader.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/ui.js"></script>
+
+  <script>
+    let tamaUI = null;
+
+    async function initApp() {
+      initLanguage();
+      pet.begin();
+
+      const loadingOverlay = document.getElementById('loading-overlay');
+      const loadingText = document.getElementById('loading-text');
+      const progressBar = document.getElementById('progress-bar');
+
+      tamaUI = new TamaPokeUI();
+
+      // Load sprites from repo/web/sprites.pak
+      await pakLoader.init((ratio, msg) => {
+        progressBar.style.width = Math.floor(ratio * 100) + '%';
+        loadingText.textContent = msg;
+      });
+
+      // Hide loading overlay smoothly
+      loadingOverlay.style.opacity = '0';
+      setTimeout(() => {
+        loadingOverlay.style.display = 'none';
+      }, 500);
+
+      // Animation Loop
+      function mainLoop() {
+        if (tamaUI) {
+          tamaUI.render();
+        }
+        requestAnimationFrame(mainLoop);
+      }
+      requestAnimationFrame(mainLoop);
+
+      // Register Service Worker for offline PWA
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then((reg) => {
+          console.log('ServiceWorker registered:', reg.scope);
+        }).catch((err) => {
+          console.log('ServiceWorker registration failed:', err);
+        });
+      }
+    }
+
+    function toggleSound() {
+      soundManager.enabled = !soundManager.enabled;
+      document.getElementById('btn-sound').textContent = soundManager.enabled ? '🔊 소리' : '🔇 음소거';
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.log('Fullscreen error:', err);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
