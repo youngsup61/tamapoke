@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121214">
-  <title>TamaPoke - 안드로이드 포켓몬 다마고치</title>
+  <title>TamaPoke - 안드로이드 & 갤럭시 핏 3 포켓몬 다마고치</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,6 +15,7 @@
     <!-- Top helper bar -->
     <div class="top-controls">
       <button class="icon-btn" id="btn-sound" onclick="toggleSound()">🔊 소리</button>
+      <button class="icon-btn" id="btn-fit3" onclick="triggerFit3()">⌚ 핏3 알림</button>
       <button class="icon-btn" id="btn-fullscreen" onclick="toggleFullscreen()">⛶ 전체화면</button>
     </div>
 
@@ -39,6 +40,7 @@
   <script src="js/dex.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/notification.js"></script>
   <script src="js/pak_loader.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/ui.js"></script>
@@ -65,6 +67,9 @@
         loadingText.textContent = msg;
       });
 
+      // Init Fit3 Notification monitor
+      fit3Manager.init();
+
       // Hide loading overlay smoothly
       loadingOverlay.style.opacity = '0';
       setTimeout(() => {
@@ -80,12 +85,23 @@
       }
       requestAnimationFrame(mainLoop);
 
-      // Register Service Worker for offline PWA
+      // Register Service Worker for offline PWA & Fit 3 notification actions
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').then((reg) => {
           console.log('ServiceWorker registered:', reg.scope);
         }).catch((err) => {
           console.log('ServiceWorker registration failed:', err);
+        });
+
+        // Listen for action clicks sent from Galaxy Fit 3
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'FIT3_ACTION') {
+            const act = event.data.action;
+            if (act === 'feed') pet.feedBerry(0);
+            else if (act === 'play') pet.play();
+            else if (act === 'clean') pet.cleanBath();
+            else if (act === 'pet') pet.petCreature();
+          }
         });
       }
     }
@@ -103,6 +119,10 @@
       } else {
         document.exitFullscreen();
       }
+    }
+
+    function triggerFit3() {
+      fit3Manager.sendManualStatus();
     }
 
     window.addEventListener('DOMContentLoaded', initApp);
