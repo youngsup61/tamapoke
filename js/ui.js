@@ -43,6 +43,8 @@ class TamaPokeUI {
     this.gameScore = 0;
     this.gameMisses = 0;
     this.gameOver = false;
+    this.touchRipple = null;
+    this.activeBtn = -1;
 
     this.initTouch();
   }
@@ -51,12 +53,20 @@ class TamaPokeUI {
     const el = this.canvas;
     const getPos = (e) => {
       const rect = el.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const scale = CANVAS_SIZE / rect.width;
+      let clientX = e.clientX;
+      let clientY = e.clientY;
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+      }
+      const scaleX = CANVAS_SIZE / rect.width;
+      const scaleY = CANVAS_SIZE / rect.height;
       return {
-        x: (clientX - rect.left) * scale,
-        y: (clientY - rect.top) * scale
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
       };
     };
 
@@ -70,7 +80,7 @@ class TamaPokeUI {
       if (this.view === 'main' && !pet.isEgg()) {
         const dx = pos.x - this.petX;
         const dy = pos.y - (PET_GROUND - 40);
-        if (Math.hypot(dx, dy) < 60) {
+        if (Math.hypot(dx, dy) < 65) {
           this.longPressTimer = setTimeout(() => {
             this.showReleaseDialog();
           }, 2500);
@@ -83,37 +93,31 @@ class TamaPokeUI {
         clearTimeout(this.longPressTimer);
         this.longPressTimer = null;
       }
-      const changedTouch = e.changedTouches ? e.changedTouches[0] : e;
-      const rect = el.getBoundingClientRect();
-      const scale = CANVAS_SIZE / rect.width;
-      const endX = (changedTouch.clientX - rect.left) * scale;
-      const endY = (changedTouch.clientY - rect.top) * scale;
-
-      const dx = endX - this.touchStartX;
-      const dy = endY - this.touchStartY;
+      const pos = getPos(e);
+      const dx = pos.x - this.touchStartX;
+      const dy = pos.y - this.touchStartY;
       const dist = Math.hypot(dx, dy);
       const dt = Date.now() - this.touchStartTime;
 
       if (dt > 2500 && this.confirmDialog) {
-        // already handled by long press
         return;
       }
 
       // Swipe detection
-      if (dist > 45 && dt < 600) {
+      if (dist > 50 && dt < 500) {
         if (Math.abs(dy) > Math.abs(dx)) {
-          if (dy < -45) this.onSwipeUp();
-          else if (dy > 45) this.onSwipeDown();
+          if (dy < -50) this.onSwipeUp();
+          else if (dy > 50) this.onSwipeDown();
         } else {
-          if (dx < -45) this.onSwipeLeft();
-          else if (dx > 45) this.onSwipeRight();
+          if (dx < -50) this.onSwipeLeft();
+          else if (dx > 50) this.onSwipeRight();
         }
         return;
       }
 
-      // Tap
-      if (dist < 20) {
-        this.onTap(endX, endY);
+      // Tap (generous threshold up to 40px for mobile touch)
+      if (dist < 40) {
+        this.onTap(pos.x, pos.y);
       }
     };
 
@@ -125,6 +129,7 @@ class TamaPokeUI {
 
   onTap(x, y) {
     sfxPlay(SFX_TAP);
+    this.touchRipple = { x, y, t: Date.now() };
 
     // Dialog tap
     if (this.confirmDialog) {
@@ -277,8 +282,8 @@ class TamaPokeUI {
         // 4 choices: Berry Red, Blue, Green, Candy
         for (let i = 0; i < 4; i++) {
           const bx = 110 + i * 65;
-          const by = 310;
-          if (Math.hypot(x - bx, y - by) < 28) {
+          const by = 308;
+          if (Math.hypot(x - bx, y - by) < 40) {
             if (i < 3) pet.feedBerry(i);
             else pet.feedCandy();
             this.feedMenuOpen = false;
@@ -289,16 +294,18 @@ class TamaPokeUI {
         return;
       }
 
-      // Bottom 4 buttons
+      // Bottom 4 buttons (Generous 44px hit radius with active touch feedback)
       const buttons = [
-        { cx: 140, cy: 390, action: 'feed' },
-        { cx: 202, cy: 404, action: 'play' },
-        { cx: 264, cy: 404, action: 'light' },
-        { cx: 326, cy: 390, action: 'bath' }
+        { id: 0, cx: 140, cy: 390, action: 'feed' },
+        { id: 1, cx: 202, cy: 404, action: 'play' },
+        { id: 2, cx: 264, cy: 404, action: 'light' },
+        { id: 3, cx: 326, cy: 390, action: 'bath' }
       ];
 
       for (const btn of buttons) {
-        if (Math.hypot(x - btn.cx, y - btn.cy) < 28) {
+        if (Math.hypot(x - btn.cx, y - btn.cy) < 44) {
+          this.activeBtn = btn.id;
+          setTimeout(() => { this.activeBtn = -1; }, 160);
           if (btn.action === 'feed') {
             this.feedMenuOpen = !this.feedMenuOpen;
           } else if (btn.action === 'play') {
@@ -464,6 +471,20 @@ class TamaPokeUI {
     // Dialog overlay
     if (this.confirmDialog) {
       this.renderDialog();
+    }
+
+    // Touch ripple feedback
+    if (this.touchRipple) {
+      const elapsed = (Date.now() - this.touchRipple.t) / 300;
+      if (elapsed < 1) {
+        ctx.strokeStyle = `rgba(232, 80, 58, ${0.7 * (1 - elapsed)})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(this.touchRipple.x, this.touchRipple.y, 8 + elapsed * 28, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        this.touchRipple = null;
+      }
     }
 
     ctx.restore();
@@ -701,17 +722,23 @@ class TamaPokeUI {
     for (let i = 0; i < btns.length; i++) {
       const b = btns[i];
       const off = pet.sleeping && i !== 2;
+      const isActive = this.activeBtn === i;
+      const radius = isActive ? 25 : 28;
 
-      ctx.fillStyle = off ? (isNight ? '#202436' : '#e4dfcf') : (isNight ? '#2e354f' : '#ffffff');
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 2;
+      let bgColor = isNight ? '#2e354f' : '#ffffff';
+      if (off) bgColor = isNight ? '#202436' : '#e4dfcf';
+      if (isActive) bgColor = '#ff7675';
+
+      ctx.fillStyle = bgColor;
+      ctx.strokeStyle = isActive ? '#d63031' : ink;
+      ctx.lineWidth = isActive ? 3 : 2.5;
 
       ctx.beginPath();
-      ctx.arc(b.cx, b.cy, 22, 0, Math.PI * 2);
+      ctx.arc(b.cx, b.cy, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      ctx.font = '18px sans-serif';
+      ctx.font = '22px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(b.icon, b.cx, b.cy + 1);
@@ -721,11 +748,11 @@ class TamaPokeUI {
 
   renderFeedMenu() {
     const ctx = this.ctx;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
     ctx.strokeStyle = '#2a2a36';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.roundRect(85, 275, 296, 68, 16);
+    ctx.roundRect(80, 268, 306, 76, 18);
     ctx.fill();
     ctx.stroke();
 
@@ -738,13 +765,13 @@ class TamaPokeUI {
 
     for (let i = 0; i < 4; i++) {
       const bx = 110 + i * 65;
-      const by = 305;
-      ctx.font = '22px sans-serif';
+      const by = 302;
+      ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(items[i].label, bx, by);
-      ctx.fillStyle = '#333';
-      ctx.font = '10px "Pretendard", sans-serif';
-      ctx.fillText(items[i].sub, bx, by + 22);
+      ctx.fillStyle = '#222';
+      ctx.font = 'bold 11px "Pretendard", sans-serif';
+      ctx.fillText(items[i].sub, bx, by + 24);
     }
   }
 
